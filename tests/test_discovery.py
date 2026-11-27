@@ -51,7 +51,9 @@ def test_discovery_priority_order(tmp_path: Path) -> None:
     reg_root = make_fake_matlab_root(tmp_path, "reg_matlab", release="R2026b")
 
     exe_name = "matlab.exe" if get_platform_arch() == "win64" else "matlab"
-    which_fn = lambda _cmd: str(path_root / "bin" / exe_name)
+
+    def which_fn(_cmd: str) -> str:
+        return str(path_root / "bin" / exe_name)
 
     # 1. CLI wins over everything
     found = discover_matlab(

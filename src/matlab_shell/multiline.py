@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import re
 
-_BLOCK_OPENERS = frozenset(
+_ALWAYS_BLOCK_OPENERS = frozenset(
     {
         "if",
         "for",
@@ -15,6 +15,10 @@ _BLOCK_OPENERS = frozenset(
         "function",
         "classdef",
         "spmd",
+    }
+)
+_CLASSDEF_SECTION_OPENERS = frozenset(
+    {
         "properties",
         "methods",
         "events",
@@ -36,9 +40,10 @@ def is_complete_statement(code: str) -> bool:
         return True
 
     bracket_depth = 0
-    block_depth = 0
+    block_stack: list[str] = []
     trailing_ellipsis = False
     in_block_comment = False
+    prev_non_ws = ""
 
     i = 0
     n = len(code)
@@ -60,6 +65,7 @@ def is_complete_statement(code: str) -> bool:
                         in_block_comment = False
                         i = k + 1 if k < n and code[k] == "\n" else k
                         at_line_start = True
+                        prev_non_ws = ""
                         continue
             if ch == "\n":
                 at_line_start = True
@@ -80,10 +86,13 @@ def is_complete_statement(code: str) -> bool:
                     in_block_comment = True
                     i = k + 1 if k < n and code[k] == "\n" else k
                     at_line_start = True
+                    prev_non_ws = ""
                     continue
 
         if ch == "\n":
             at_line_start = True
+            if not trailing_ellipsis:
+                prev_non_ws = ""
             i += 1
             continue
 
@@ -121,6 +130,7 @@ def is_complete_statement(code: str) -> bool:
                 if code[i] == "\n":
                     break
                 i += 1
+            prev_non_ws = "str"
             continue
 
         # Single-quoted char vector vs transpose operator
@@ -128,6 +138,7 @@ def is_complete_statement(code: str) -> bool:
             prev = code[i - 1] if i > 0 else ""
             if prev.isalnum() or prev in {"_", ")", "]", "}", "."}:
                 i += 1
+                prev_non_ws = ch
                 continue
             i += 1
             while i < n:
@@ -140,16 +151,19 @@ def is_complete_statement(code: str) -> bool:
                 if code[i] == "\n":
                     break
                 i += 1
+            prev_non_ws = "str"
             continue
 
         if ch in _OPEN_BRACKETS:
             bracket_depth += 1
+            prev_non_ws = ch
             i += 1
             continue
 
         if ch in _CLOSE_BRACKETS:
             if bracket_depth > 0:
                 bracket_depth -= 1
+            prev_non_ws = ch
             i += 1
             continue
 
@@ -158,15 +172,24 @@ def is_complete_statement(code: str) -> bool:
             while i < n and (code[i].isalnum() or code[i] == "_"):
                 i += 1
             word = code[start:i]
-            if bracket_depth == 0:
-                if word in _BLOCK_OPENERS:
-                    block_depth += 1
-                elif word == "end" and block_depth > 0:
-                    block_depth -= 1
+            is_field_access = prev_non_ws == "."
+            if bracket_depth == 0 and not is_field_access:
+                if word in _ALWAYS_BLOCK_OPENERS:
+                    block_stack.append(word)
+                elif (
+                    word in _CLASSDEF_SECTION_OPENERS
+                    and block_stack
+                    and block_stack[-1] == "classdef"
+                ):
+                    block_stack.append(word)
+                elif word == "end" and block_stack:
+                    block_stack.pop()
+            prev_non_ws = "id"
             continue
 
+        prev_non_ws = ch
         i += 1
 
-    if in_block_comment or trailing_ellipsis or bracket_depth > 0 or block_depth > 0:
+    if in_block_comment or trailing_ellipsis or bracket_depth > 0 or bool(block_stack):
         return False
     return True

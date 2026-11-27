@@ -121,9 +121,13 @@ def _list_path_completions(raw_prefix: str, cwd: Path) -> list[tuple[str, int]]:
     normalized = raw_prefix.replace("\\", "/")
     if "/" in normalized:
         dir_part, name_prefix = normalized.rsplit("/", 1)
-        search_dir = Path(dir_part) if Path(dir_part).is_absolute() else cwd / dir_part
         if dir_part == "":
             search_dir = Path("/")
+        elif len(dir_part) == 2 and dir_part[1] == ":" and dir_part[0].isalpha():
+            search_dir = Path(f"{dir_part}/")
+        else:
+            candidate_dir = Path(dir_part)
+            search_dir = candidate_dir if candidate_dir.is_absolute() else cwd / dir_part
     else:
         name_prefix = normalized
         search_dir = cwd

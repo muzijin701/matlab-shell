@@ -4,6 +4,8 @@
 
 基于 `uv` + Python 的终端交互式 MATLAB CLI 工具，让你直接在 Windows Terminal、macOS Terminal 或 Linux Shell 中获得 `>>` 交互式体验与脚本单次执行能力，无需打开完整的 MATLAB Desktop 桌面。
 
+详细说明请参阅 **[用户使用指南](docs/user-guide.md)**（[English Guide](docs/user-guide.en.md)）。
+
 ## 环境要求
 
 - 本地已安装并激活 **MATLAB R2024a 或更高版本**（当前已在 MATLAB R2026a 验证通过）
@@ -37,7 +39,7 @@
 
 ### 3. GitHub Releases 独立压缩包
 
-从 [Releases](https://github.com/muzijin701/matlab-shell/releases) 下载对应平台压缩包并解压，将解压目录加入 `PATH` 即可直接使用 `msh` / `matlab-shell`。
+从 [Releases](https://github.com/muzijin701/matlab-shell/releases) 下载对应平台压缩包（当前提供 `windows-x86_64`、`linux-x86_64`、`macos-arm64`；其他架构请用下方 Python 工具链安装）并解压，将解压目录加入 `PATH` 即可直接使用 `msh` / `matlab-shell`。
 
 ### 4. Python 工具链安装
 
@@ -64,15 +66,16 @@ msh -i demo.m
 msh --attach
 msh --attach MySession --cd
 
-# 指定 MATLAB 根目录 / 禁用原生 Figure 窗口
-msh --matlab-root "D:\software\winget-apps" --no-figure
+# 指定 MATLAB 根目录 / 控制原生 Figure 窗口
+msh --matlab-root "C:\Program Files\MATLAB\R2026a" --no-figure
+msh --figure
 ```
 
 ### 交互模式功能
 
 - **多行自动续行**：括号未闭合、行尾 `...`、未配对代码块（`if`/`for`/`while`/`switch`/`try`/`function`/`classdef` 缺 `end`）自动续行（`... `），支持 `Alt+Enter` 手动换行。
-- **分层 Tab 补全**：`.` 开头补全 Meta-Command；引号内或 `!` 后补全本地路径；代码区补全当前 Workspace 变量、本地 `.m` 文件名与常用关键字。
-- **Meta-Command**：`.help`、`.sessions`、`.attach [name]`、`.vars`、`.clear`、`.info`、`.exit`。
+- **分层 Tab 补全**：`.` 开头补全 Meta-Command；引号内或 `!` 后补全本地路径；代码区补全当前 Workspace 变量、本地 `.m` 文件名与常用关键字，并实时跟随 `cd` 目录变化。
+- **Meta-Command 与本地拦截命令**：`.help`、`.sessions`、`.attach [name]`、`.vars`、`.clear`、`.info`、`.exit`；独立输入的 `clc`、`exit`、`quit` 在终端侧直接清屏或退出/断开（不关闭 Shared Session 外部桌面）。
 - **历史与中断**：跨会话命令历史（`↑` / `Ctrl+R`）；计算中 `Ctrl+C` 尝试取消当前任务，空闲 `Ctrl+C` 清空输入，`Ctrl+D` 或 `exit` 退出/断开。
 
 ## 可选配置文件（`config.toml`）
@@ -80,7 +83,7 @@ msh --matlab-root "D:\software\winget-apps" --no-figure
 零配置即可开箱使用。如需固化偏好，可在用户配置目录创建 `config.toml`（Windows：`%APPDATA%\matlab-shell\config.toml`；macOS：`~/Library/Application Support/matlab-shell/config.toml`；Linux：`~/.config/matlab-shell/config.toml`）：
 
 ```toml
-matlab_root = "D:\\software\\winget-apps"
+matlab_root = "C:\\Program Files\\MATLAB\\R2026a"
 editing_mode = "emacs" # 或 "vi"
 no_figure = false
 ```

@@ -253,9 +253,154 @@ def test_unsupported_input_and_keyboard_give_friendly_errors(tmp_path: Path) -> 
     assert "keyboard" not in backend.sessions[0].eval_history
 
     assert contains_keyboard_call("keyboard") is True
+    assert contains_keyboard_call("x = 1; keyboard") is True
     assert contains_keyboard_call("a'; keyboard") is True
     assert contains_keyboard_call("disp('keyboard')") is False
     assert contains_keyboard_call("% keyboard") is False
+    assert contains_keyboard_call("%{\nkeyboard\n%}") is False
+    assert contains_keyboard_call("s.keyboard = 1") is False
+    assert contains_keyboard_call("s . keyboard = 1") is False
+
+
+def test_clc_intercept_cd_sync_and_ctrl_c_before_handle(tmp_path: Path) -> None:
+    from prompt_toolkit.completion import CompleteEvent
+    from prompt_toolkit.document import Document
+
+    from matlab_shell.completer import MatlabCompleter
+    from matlab_shell.meta import CLEAR_SCREEN_SEQUENCE
+    from matlab_shell.repl import run_repl
+
+    matlab_root = make_fake_matlab_root(tmp_path, "R2026a", release="R2026a")
+    subdir = tmp_path / "sub_pkg"
+    subdir.mkdir()
+    (subdir / "inner_fn.m").write_text("disp(1);\n", encoding="utf-8")
+
+    backend: FakeSessionBackend
+
+    def handler(code: str, stdout: TextIO, _stderr: TextIO) -> None:
+        if code.strip() == "cd sub_pkg":
+            backend.sessions[-1].cwd = str(subdir)
+
+    backend = FakeSessionBackend(default_handler=handler)
+    cleared: list[bool] = []
+    driver = ScriptedPromptDriver(["clc", "clc;", "cd sub_pkg", ".info", ".exit"])
+    out = io.StringIO()
+    err = io.StringIO()
+
+    code = run_cli(
+        [],
+        backend=backend,
+        env={"MATLAB_SHELL_ROOT": str(matlab_root)},
+        cwd=tmp_path,
+        stdout=out,
+        stderr=err,
+        prompt_driver=driver,
+        history_path=tmp_path / "history.txt",
+        config_path=tmp_path / "missing_config.toml",
+        clear_screen=lambda: cleared.append(True),
+    )
+    assert code == 0
+    assert cleared == [True, True]
+    assert "clc" not in backend.sessions[0].eval_history
+    assert "clc;" not in backend.sessions[0].eval_history
+    assert f"Session CWD:   {subdir}" in out.getvalue()
+
+    # Without custom clear_screen, clc writes CLEAR_SCREEN_SEQUENCE directly
+    out_seq = io.StringIO()
+    err_seq = io.StringIO()
+    backend_seq = FakeSessionBackend()
+    code_seq = run_cli(
+        [],
+        backend=backend_seq,
+        env={"MATLAB_SHELL_ROOT": str(matlab_root)},
+        cwd=tmp_path,
+        stdout=out_seq,
+        stderr=err_seq,
+        prompt_driver=ScriptedPromptDriver(["clc", ".exit"]),
+        history_path=tmp_path / "history_seq.txt",
+        config_path=tmp_path / "missing_config.toml",
+    )
+    assert code_seq == 0
+    assert CLEAR_SCREEN_SEQUENCE in out_seq.getvalue()
+
+    # Ctrl+C raised inside eval_async (before handle returned) must not raise UnboundLocalError
+    def raise_before_handle(_code: str, _stdout: TextIO, _stderr: TextIO) -> FakeExecutionHandle:
+        raise KeyboardInterrupt
+
+    backend_int = FakeSessionBackend(async_handler=raise_before_handle)
+    err_int = io.StringIO()
+    code_int = run_cli(
+        [],
+        backend=backend_int,
+        env={"MATLAB_SHELL_ROOT": str(matlab_root)},
+        cwd=tmp_path,
+        stdout=io.StringIO(),
+        stderr=err_int,
+        prompt_driver=ScriptedPromptDriver(["long_task", ".exit"]),
+        history_path=tmp_path / "history_int.txt",
+        config_path=tmp_path / "missing_config.toml",
+    )
+    assert code_int == 0
+    assert "Execution cancelled" in err_int.getvalue()
+
+    # Verify PromptToolkitDriver completer sees updated Session CWD after cd
+    from matlab_shell.discovery import MatlabInstallation
+    from matlab_shell.repl import PromptToolkitDriver
+
+    captured_completer: list[MatlabCompleter] = []
+
+    class CapturingDriver:
+        def __init__(self) -> None:
+            self._steps = iter(["cd sub_pkg", "exit"])
+
+        def prompt(self, _msg: str) -> str:
+            step = next(self._steps)
+            if step == "exit":
+                items = [
+                    c.text
+                    for c in captured_completer[0].get_completions(
+                        Document("inner_"),
+                        CompleteEvent(completion_requested=True),
+                    )
+                ]
+                assert "inner_fn" in items
+            return step
+
+    # Build a completer directly mirroring run_repl wiring and test via run_repl
+    _ = PromptToolkitDriver
+    session_backend = FakeSessionBackend(
+        default_handler=lambda code, _o, _e: setattr(
+            session_backend.sessions[-1], "cwd", str(subdir)
+        )
+        if code == "cd sub_pkg"
+        else None
+    )
+    inst = MatlabInstallation(root=matlab_root, release="R2026a", version="26.1", source="env")
+
+    # Hook MatlabCompleter via monkeypatch-free inspection: check run_repl uses live cwd
+    from unittest.mock import patch
+
+    orig_completer_cls = MatlabCompleter
+
+    def spy_completer(*, get_workspace_vars, get_cwd, meta_commands=()):  # type: ignore[no-untyped-def]
+        comp = orig_completer_cls(
+            get_workspace_vars=get_workspace_vars,
+            get_cwd=get_cwd,
+        )
+        captured_completer.append(comp)
+        return comp
+
+    with patch("matlab_shell.repl.MatlabCompleter", side_effect=spy_completer):
+        rc = run_repl(
+            backend=session_backend,
+            installation=inst,
+            cwd=tmp_path,
+            stdout=io.StringIO(),
+            stderr=io.StringIO(),
+            history_path=tmp_path / "hist_comp.txt",
+            prompt_driver=CapturingDriver(),
+        )
+    assert rc == 0
 
 
 def test_shell_escape_passthrough(tmp_path: Path) -> None:

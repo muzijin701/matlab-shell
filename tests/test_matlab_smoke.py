@@ -53,12 +53,17 @@ def test_real_matlab_oneshot_script(tmp_path: Path) -> None:
 
 @pytest.mark.matlab
 def test_real_matlab_interactive_repl_flow(tmp_path: Path) -> None:
+    subdir = tmp_path / "sub_smoke"
+    subdir.mkdir()
     driver = ScriptedPromptDriver(
         [
             "x = 20;",
             "disp(x + 22)",
             "s = 0;\nfor k = 1:4\n  s = s + k;\nend\ndisp(s)",
+            "disp(size(methods(1)))",
             "!echo shell_ok",
+            "clc",
+            f"cd '{subdir}'",
             ".vars",
             ".info",
             "keyboard",
@@ -66,6 +71,7 @@ def test_real_matlab_interactive_repl_flow(tmp_path: Path) -> None:
             ".exit",
         ]
     )
+    cleared: list[bool] = []
     out = io.StringIO()
     err = io.StringIO()
 
@@ -77,6 +83,7 @@ def test_real_matlab_interactive_repl_flow(tmp_path: Path) -> None:
         prompt_driver=driver,
         history_path=tmp_path / "history.txt",
         config_path=tmp_path / "missing_config.toml",
+        clear_screen=lambda: cleared.append(True),
     )
 
     assert code == 0
@@ -86,6 +93,8 @@ def test_real_matlab_interactive_repl_flow(tmp_path: Path) -> None:
     assert "shell_ok" in out_text
     assert "Managed Session" in out_text
     assert "double" in out_text
+    assert cleared == [True]
+    assert f"Session CWD:   {subdir}" in out_text
     err_text = err.getvalue()
     assert UNSUPPORTED_KEYBOARD_MESSAGE in err_text
     assert UNSUPPORTED_INPUT_MESSAGE in err_text

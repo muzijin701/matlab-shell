@@ -4,10 +4,11 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
 from prompt_toolkit.completion import CompleteEvent
 from prompt_toolkit.document import Document
 
-from matlab_shell.completer import MatlabCompleter
+from matlab_shell.completer import MatlabCompleter, _list_path_completions
 from matlab_shell.multiline import is_complete_statement
 
 
@@ -49,6 +50,42 @@ def test_multiline_complete_and_incomplete_cases() -> None:
     assert is_complete_statement("%{\nfor i = 1:3") is False
     assert is_complete_statement("%{\nfor i = 1:3\n%}\nx = 1;") is True
     assert is_complete_statement("B = A' * A;") is True
+
+    # Context-sensitive classdef keywords & struct field access must not falsely trigger blocks
+    assert is_complete_statement("methods(obj)") is True
+    assert is_complete_statement("properties(obj)") is True
+    assert is_complete_statement("events(obj)") is True
+    assert is_complete_statement("enumeration(obj)") is True
+    assert is_complete_statement("s.if = 1;") is True
+    assert is_complete_statement("obj.end") is True
+    assert is_complete_statement("obj.methods") is True
+    assert (
+        is_complete_statement(
+            "classdef Foo\n  methods (Access = private)\n    function m()\n      x = methods(obj);\n    end\n  end\nend"
+        )
+        is True
+    )
+    assert (
+        is_complete_statement(
+            "classdef Foo\n  methods (Access = private)\n    function m()\n      x = methods(obj);\n    end\n  end"
+        )
+        is False
+    )
+
+
+def test_windows_drive_root_path_completion(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    recorded: list[Path] = []
+
+    def spy_is_dir(self: Path) -> bool:
+        recorded.append(self)
+        return False
+
+    monkeypatch.setattr(Path, "is_dir", spy_is_dir)
+    assert _list_path_completions("C:/foo", tmp_path) == []
+    assert recorded == [Path("C:/")]
 
 
 def test_tiered_tab_completion(tmp_path: Path) -> None:

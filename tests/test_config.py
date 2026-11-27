@@ -131,3 +131,37 @@ def test_config_path_per_platform(tmp_path: Path) -> None:
         get_config_path(env={"XDG_CONFIG_HOME": str(tmp_path / "cfg")}, system="Linux", home=tmp_path)
         == tmp_path / "cfg" / "matlab-shell" / "config.toml"
     )
+
+
+def test_figure_and_no_figure_override_config(tmp_path: Path) -> None:
+    matlab_root = make_fake_matlab_root(tmp_path, "R2026a", release="R2026a")
+
+    cfg_true = tmp_path / "cfg_true.toml"
+    cfg_true.write_text("no_figure = true\n", encoding="utf-8")
+    backend1 = FakeSessionBackend()
+    code1 = run_cli(
+        ["--figure", "-c", "x=1"],
+        backend=backend1,
+        env={"MATLAB_SHELL_ROOT": str(matlab_root)},
+        cwd=tmp_path,
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+        config_path=cfg_true,
+    )
+    assert code1 == 0
+    assert backend1.start_calls[0].no_figure is False
+
+    cfg_false = tmp_path / "cfg_false.toml"
+    cfg_false.write_text("no_figure = false\n", encoding="utf-8")
+    backend2 = FakeSessionBackend()
+    code2 = run_cli(
+        ["--no-figure", "-c", "x=1"],
+        backend=backend2,
+        env={"MATLAB_SHELL_ROOT": str(matlab_root)},
+        cwd=tmp_path,
+        stdout=io.StringIO(),
+        stderr=io.StringIO(),
+        config_path=cfg_false,
+    )
+    assert code2 == 0
+    assert backend2.start_calls[0].no_figure is True

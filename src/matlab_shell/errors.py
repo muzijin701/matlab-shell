@@ -49,8 +49,62 @@ def strip_matlab_comments_and_strings(code: str) -> str:
     out: list[str] = []
     i = 0
     n = len(code)
+    at_line_start = True
+    in_block_comment = False
     while i < n:
         ch = code[i]
+
+        if in_block_comment:
+            if at_line_start:
+                j = i
+                while j < n and code[j] in " \t":
+                    j += 1
+                if code[j : j + 2] == "%}":
+                    k = j + 2
+                    while k < n and code[k] in " \t\r":
+                        k += 1
+                    if k == n or code[k] == "\n":
+                        in_block_comment = False
+                        out.append("\n" if k < n and code[k] == "\n" else " ")
+                        i = k + 1 if k < n and code[k] == "\n" else k
+                        at_line_start = True
+                        continue
+            if ch == "\n":
+                out.append("\n")
+                at_line_start = True
+            else:
+                at_line_start = False
+            i += 1
+            continue
+
+        if at_line_start:
+            j = i
+            while j < n and code[j] in " \t":
+                j += 1
+            if code[j : j + 2] == "%{":
+                k = j + 2
+                while k < n and code[k] in " \t\r":
+                    k += 1
+                if k == n or code[k] == "\n":
+                    in_block_comment = True
+                    out.append("\n" if k < n and code[k] == "\n" else " ")
+                    i = k + 1 if k < n and code[k] == "\n" else k
+                    at_line_start = True
+                    continue
+
+        if ch == "\n":
+            out.append(ch)
+            at_line_start = True
+            i += 1
+            continue
+
+        if ch in " \t\r":
+            out.append(ch)
+            i += 1
+            continue
+
+        at_line_start = False
+
         if ch == "%":
             while i < n and code[i] != "\n":
                 i += 1
@@ -63,6 +117,8 @@ def strip_matlab_comments_and_strings(code: str) -> str:
                         i += 2
                         continue
                     i += 1
+                    break
+                if code[i] == "\n":
                     break
                 i += 1
             out.append(" ")
@@ -81,6 +137,8 @@ def strip_matlab_comments_and_strings(code: str) -> str:
                         continue
                     i += 1
                     break
+                if code[i] == "\n":
+                    break
                 i += 1
             out.append(" ")
             continue
@@ -92,7 +150,14 @@ def strip_matlab_comments_and_strings(code: str) -> str:
 def contains_keyboard_call(code: str) -> bool:
     """Return True if MATLAB code appears to invoke `keyboard` outside strings/comments."""
     stripped = strip_matlab_comments_and_strings(code)
-    return _KEYBOARD_RE.search(stripped) is not None
+    for match in _KEYBOARD_RE.finditer(stripped):
+        idx = match.start() - 1
+        while idx >= 0 and stripped[idx].isspace():
+            idx -= 1
+        if idx >= 0 and stripped[idx] == ".":
+            continue
+        return True
+    return False
 
 
 def is_unsupported_input_error(text: str) -> bool:

@@ -27,3 +27,7 @@ _Avoid_: Batch mode, headless run, script mode
 **Meta-Command**:
 A `.`-prefixed control command entered at the interactive prompt to manage `matlab-shell` or inspect the active **Session**, rather than being evaluated as MATLAB code.
 _Avoid_: Slash command, magic command, builtin
+
+**Intercepted Command**:
+A standalone MATLAB command (`exit`, `quit`, or `clc`) caught at the interactive prompt and handled locally by `matlab-shell` instead of being forwarded to the **Session**.
+_Avoid_: Local alias, shell builtin, hijacked command

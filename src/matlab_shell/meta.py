@@ -15,6 +15,7 @@ from matlab_shell.discovery import MatlabInstallation
 from matlab_shell.errors import MatlabShellError
 
 _META_CMD_RE = re.compile(r"^\s*\.[A-Za-z]")
+CLEAR_SCREEN_SEQUENCE = "\x1b[2J\x1b[3J\x1b[1;1H"
 
 SHARE_ENGINE_HINT = (
     "No Shared Session found. Start MATLAB Desktop or run `matlab.engine.shareEngine` "
@@ -33,6 +34,27 @@ class MetaCommandResult:
 def is_meta_command(line: str) -> bool:
     """Return True for `.`-prefixed Meta-Commands (without matching numbers like `.5`)."""
     return _META_CMD_RE.match(line) is not None
+
+
+def clear_terminal_screen(
+    stdout: TextIO,
+    clear_screen: Callable[[], None] | None = None,
+) -> None:
+    """Clear the terminal screen and scrollback buffer without modifying MATLAB Desktop."""
+    if clear_screen is not None:
+        clear_screen()
+    else:
+        stdout.write(CLEAR_SCREEN_SEQUENCE)
+        stdout.flush()
+
+
+def fetch_session_cwd(session: MatlabSession, fallback: Path) -> Path:
+    """Read the Session's current working directory, falling back safely on error."""
+    try:
+        raw = session.pwd().strip()
+    except MatlabShellError:
+        return fallback
+    return Path(raw) if raw else fallback
 
 
 def fetch_workspace_var_names(session: MatlabSession) -> list[str]:
@@ -112,6 +134,7 @@ def dispatch_meta_command(
     stdout: TextIO,
     stderr: TextIO,
     clear_screen: Callable[[], None] | None = None,
+    choose_shared: Callable[[tuple[str, ...]], str] | None = None,
 ) -> MetaCommandResult:
     """Execute a `.`-prefixed Meta-Command."""
     try:
@@ -132,7 +155,7 @@ def dispatch_meta_command(
             "  .info            Show bound MATLAB path, version, and active Session\n"
             "  .exit            Exit matlab-shell (or detach from Shared Session)\n"
             "Tips: Alt+Enter inserts a newline, !cmd runs a shell command, "
-            "Ctrl+C cancels execution, Ctrl+D exits.\n"
+            "clc clears screen, Ctrl+C cancels execution, exit or Ctrl+D exits.\n"
         )
         stdout.flush()
         return MetaCommandResult(action="continue")
@@ -161,7 +184,18 @@ def dispatch_meta_command(
             stderr.flush()
             return MetaCommandResult(action="continue")
 
-        chosen = target_name or available[0]
+        if target_name is not None:
+            chosen = target_name
+        elif len(available) > 1 and choose_shared is not None:
+            try:
+                chosen = choose_shared(available)
+            except MatlabShellError as exc:
+                stderr.write(f"{exc}\n")
+                stderr.flush()
+                return MetaCommandResult(action="continue")
+        else:
+            chosen = available[0]
+
         try:
             new_session = backend.attach_shared(installation, chosen)
         except MatlabShellError as exc:
@@ -195,11 +229,7 @@ def dispatch_meta_command(
         return MetaCommandResult(action="continue")
 
     if cmd == ".clear":
-        if clear_screen is not None:
-            clear_screen()
-        else:
-            stdout.write("\x1b[2J\x1b[H")
-            stdout.flush()
+        clear_terminal_screen(stdout, clear_screen)
         return MetaCommandResult(action="continue")
 
     if cmd == ".info":
@@ -214,7 +244,7 @@ def dispatch_meta_command(
             f"Version:       {installation.version or 'unknown'}\n"
             f"Discovery:     {installation.source}\n"
             f"Session Type:  {session_kind}\n"
-            f"Terminal CWD:  {cwd}\n"
+            f"Session CWD:   {cwd}\n"
         )
         stdout.flush()
         return MetaCommandResult(action="continue")

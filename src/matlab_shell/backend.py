@@ -40,6 +40,8 @@ class MatlabSession(Protocol):
 
     def cd(self, path: str) -> str: ...
 
+    def pwd(self) -> str: ...
+
     def eval(self, code: str, *, stdout: TextIO, stderr: TextIO) -> None: ...
 
     def eval_async(self, code: str, *, stdout: TextIO, stderr: TextIO) -> ExecutionHandle: ...
@@ -197,6 +199,12 @@ class RealMatlabSession:
     def cd(self, path: str) -> str:
         try:
             return str(self._eng.cd(str(path), nargout=1))
+        except Exception as exc:
+            raise MatlabExecutionError(str(exc)) from exc
+
+    def pwd(self) -> str:
+        try:
+            return str(self._eng.pwd(nargout=1))
         except Exception as exc:
             raise MatlabExecutionError(str(exc)) from exc
 

@@ -62,9 +62,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Explicit path to local MATLAB installation root",
     )
     parser.add_argument(
-        "--no-figure",
-        action="store_true",
-        help="Disable native MATLAB Figure windows for the Session",
+        "--figure",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="Enable (--figure) or disable (--no-figure) native MATLAB Figure windows",
     )
     parser.add_argument(
         "--version",
@@ -127,7 +128,7 @@ def run_cli(
             default_candidates=default_candidates,
             registry_candidates=registry_candidates,
         )
-        effective_no_figure = bool(args.no_figure or config.no_figure)
+        effective_no_figure = config.no_figure if args.figure is None else (not args.figure)
         active_backend = RealSessionBackend() if backend is None else backend
 
         if (args.command is None and script_path is None) or args.interactive:

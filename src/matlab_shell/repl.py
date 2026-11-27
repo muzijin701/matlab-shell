@@ -6,7 +6,7 @@ import io
 import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, Literal, Protocol, TextIO
+from typing import Any, Protocol, TextIO
 
 from prompt_toolkit import PromptSession
 from prompt_toolkit.completion import Completer
@@ -16,7 +16,7 @@ from prompt_toolkit.key_binding import KeyBindings
 from prompt_toolkit.lexers import PygmentsLexer
 from pygments.lexers.matlab import MatlabLexer
 
-from matlab_shell.backend import MatlabSession, SessionBackend
+from matlab_shell.backend import ExecutionHandle, MatlabSession, SessionBackend
 from matlab_shell.completer import MatlabCompleter
 from matlab_shell.config import EditingMode as ConfigEditingMode
 from matlab_shell.discovery import MatlabInstallation
@@ -28,7 +28,9 @@ from matlab_shell.errors import (
     format_execution_error,
 )
 from matlab_shell.meta import (
+    clear_terminal_screen,
     dispatch_meta_command,
+    fetch_session_cwd,
     fetch_workspace_var_names,
     is_meta_command,
     open_session,
@@ -106,6 +108,11 @@ def is_exit_command(line: str) -> bool:
     return line.strip().rstrip(";").strip().lower() in {"exit", "quit"}
 
 
+def is_clear_command(line: str) -> bool:
+    """Return True for standalone `clc` (with optional trailing semicolon)."""
+    return line.strip().rstrip(";").strip().lower() == "clc"
+
+
 def execute_statement(
     session: MatlabSession,
     code: str,
@@ -121,17 +128,21 @@ def execute_statement(
         return False
 
     err_buf = io.StringIO()
+    handle: ExecutionHandle | None = None
     try:
         handle = session.eval_async(code, stdout=stdout, stderr=err_buf)
         while not handle.done():
             time.sleep(poll_interval)
         handle.result()
     except KeyboardInterrupt:
-        cancelled = handle.cancel()  # type: ignore[possibly-undefined]
-        if cancelled:
+        if handle is None:
             stderr.write("^C — Execution cancelled.\n")
         else:
-            stderr.write("^C — Cancellation requested (waiting for engine to return).\n")
+            cancelled = handle.cancel()
+            if cancelled:
+                stderr.write("^C — Execution cancelled.\n")
+            else:
+                stderr.write("^C — Cancellation requested (waiting for engine to return).\n")
         stderr.flush()
         return False
     except MatlabExecutionError as exc:
@@ -196,9 +207,10 @@ def run_repl(
 ) -> int:
     """Open a Managed or Shared Session, run optional startup code, and enter `>>` REPL."""
     workspace_vars: list[str] = []
+    session_cwd: Path = cwd
     completer = MatlabCompleter(
         get_workspace_vars=lambda: workspace_vars,
-        get_cwd=lambda: cwd,
+        get_cwd=lambda: session_cwd,
     )
     driver = (
         prompt_driver
@@ -242,6 +254,7 @@ def run_repl(
             )
 
         workspace_vars = fetch_workspace_var_names(session)
+        session_cwd = fetch_session_cwd(session, fallback=session_cwd)
 
         ready_release = f" {installation.release}" if installation.release else ""
         exit_verb = "detach" if session.is_shared else "quit"
@@ -269,18 +282,24 @@ def run_repl(
                     session=session,
                     backend=backend,
                     installation=installation,
-                    cwd=cwd,
+                    cwd=session_cwd,
                     stdout=stdout,
                     stderr=stderr,
                     clear_screen=clear_screen,
+                    choose_shared=choose_shared,
                 )
                 if outcome.action == "exit":
                     break
                 if outcome.action == "switch" and outcome.new_session is not None:
                     session = outcome.new_session
                     workspace_vars = fetch_workspace_var_names(session)
+                    session_cwd = fetch_session_cwd(session, fallback=cwd)
                 elif line.strip().lower().startswith(".vars"):
                     workspace_vars = fetch_workspace_var_names(session)
+                continue
+
+            if is_clear_command(line):
+                clear_terminal_screen(stdout, clear_screen)
                 continue
 
             if is_exit_command(line):
@@ -294,6 +313,7 @@ def run_repl(
                 poll_interval=poll_interval,
             ):
                 workspace_vars = fetch_workspace_var_names(session)
+                session_cwd = fetch_session_cwd(session, fallback=session_cwd)
         return 0
     finally:
         was_shared = session.is_shared

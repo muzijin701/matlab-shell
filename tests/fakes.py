@@ -61,6 +61,7 @@ class FakeMatlabSession:
         installation: MatlabInstallation,
         is_shared: bool = False,
         session_name: str | None = None,
+        initial_cwd: str = "",
         handler: Callable[[str, TextIO, TextIO], None] | None = None,
         async_handler: Callable[[str, TextIO, TextIO], ExecutionHandle] | None = None,
     ) -> None:
@@ -69,6 +70,7 @@ class FakeMatlabSession:
         self._session_name = session_name
         self._handler = handler
         self._async_handler = async_handler
+        self.cwd = initial_cwd
         self.cwd_history: list[str] = []
         self.eval_history: list[str] = []
         self.handles: list[ExecutionHandle] = []
@@ -87,8 +89,12 @@ class FakeMatlabSession:
         return self._session_name
 
     def cd(self, path: str) -> str:
+        self.cwd = path
         self.cwd_history.append(path)
         return path
+
+    def pwd(self) -> str:
+        return self.cwd
 
     def eval(self, code: str, *, stdout: TextIO, stderr: TextIO) -> None:
         self.eval_history.append(code)
@@ -131,12 +137,14 @@ class FakeSessionBackend:
         default_handler: Callable[[str, TextIO, TextIO], None] | None = None,
         async_handler: Callable[[str, TextIO, TextIO], ExecutionHandle] | None = None,
         shared_sessions: tuple[str, ...] = (),
+        shared_initial_cwd: str = "",
         start_error: Exception | None = None,
     ) -> None:
         self.responses = responses or {}
         self.default_handler = default_handler
         self.async_handler = async_handler
         self.shared_sessions = shared_sessions
+        self.shared_initial_cwd = shared_initial_cwd
         self.start_error = start_error
         self.start_calls: list[StartManagedCall] = []
         self.sessions: list[FakeMatlabSession] = []
@@ -189,6 +197,7 @@ class FakeSessionBackend:
             installation=installation,
             is_shared=True,
             session_name=name or (self.shared_sessions[0] if self.shared_sessions else None),
+            initial_cwd=self.shared_initial_cwd,
             handler=self._handle_eval,
             async_handler=self.async_handler,
         )

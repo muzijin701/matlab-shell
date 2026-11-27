@@ -143,6 +143,10 @@ coll = COLLECT(
     )
 
     bundle_dir = stage_dir / bundle_name
+    (bundle_dir / ".matlab-shell-install").write_text(
+        f"matlab-shell {version}\n",
+        encoding="utf-8",
+    )
     if platform.system() == "Windows":
         archive_path = dist_dir / f"{bundle_name}.zip"
         with zipfile.ZipFile(archive_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
