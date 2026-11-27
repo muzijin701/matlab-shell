@@ -1,6 +1,6 @@
 # matlab-shell
 
-基于 `uv` + Python 的终端交互式 MATLAB CLI 项目（设计方案待讨论确立）。
+基于 `uv` + Python 的终端交互式 MATLAB CLI 项目。
 
 ## 环境约定
 
@@ -11,7 +11,7 @@
 
 ### Issue tracker
 
-Issues and specs live in GitHub Issues (`MuZiJin701/matlab-shell`) via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+Issues and specs live in GitHub Issues (`muzijin701/matlab-shell`) via the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 

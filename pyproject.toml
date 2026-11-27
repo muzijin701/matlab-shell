@@ -3,14 +3,37 @@ name = "matlab-shell"
 version = "0.1.0"
 description = "Interactive MATLAB CLI shell in your terminal"
 readme = "README.md"
+license = "MIT"
 authors = [
     { name = "chenjinchi", email = "muzijin702@gmail.com" }
 ]
 requires-python = ">=3.12,<3.14"
-dependencies = []
+dependencies = [
+    "prompt-toolkit>=3.0.48",
+    "pygments>=2.18",
+]
+
+[project.urls]
+Homepage = "https://github.com/muzijin701/matlab-shell"
+Repository = "https://github.com/muzijin701/matlab-shell"
+Issues = "https://github.com/muzijin701/matlab-shell/issues"
 
 [project.scripts]
-matlab-shell = "matlab_shell:main"
+matlab-shell = "matlab_shell.cli:main"
+msh = "matlab_shell.cli:main"
+
+[dependency-groups]
+dev = [
+    "pyinstaller>=6.10",
+    "pytest>=8.0",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+markers = [
+    "matlab: opt-in smoke tests requiring a local MATLAB R2024a+ installation",
+]
 
 [build-system]
 requires = ["uv_build>=0.13.10,<0.14.0"]

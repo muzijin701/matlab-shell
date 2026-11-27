@@ -1,2 +1,7 @@
-def main() -> None:
-    print("matlab-shell: initialized (CLI design pending discussion).")
+"""Interactive terminal MATLAB CLI."""
+
+__version__ = "0.1.0"
+
+from matlab_shell.cli import main
+
+__all__ = ["__version__", "main"]

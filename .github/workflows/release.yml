@@ -1,0 +1,79 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, ubuntu-latest, macos-latest]
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+
+      - name: Sync dependencies
+        run: uv sync --locked
+
+      - name: Run tests
+        run: uv run pytest -m "not matlab" -v
+
+      - name: Build standalone release archive
+        run: uv run python scripts/build_release.py
+
+      - name: Verify standalone CLI help
+        shell: bash
+        run: |
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            ./dist/matlab-shell-*/msh.exe --version
+          else
+            ./dist/matlab-shell-*/msh --version
+          fi
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-${{ matrix.os }}
+          path: |
+            dist/*.zip
+            dist/*.tar.gz
+            dist/SHA256SUMS.txt
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-artifacts
+
+      - name: Collect release files and merge checksums
+        shell: bash
+        run: |
+          mkdir -p release-files
+          find release-artifacts -type f \( -name '*.zip' -o -name '*.tar.gz' \) -exec cp {} release-files/ \;
+          cat release-artifacts/*/SHA256SUMS.txt | sort -u > release-files/SHA256SUMS.txt
+          cp install.ps1 install.sh release-files/
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-files/*
+          generate_release_notes: true
